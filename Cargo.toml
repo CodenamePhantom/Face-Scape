@@ -1,0 +1,13 @@
+[package]
+name = "face-scape"
+version = "0.1.0"
+edition = "2024"
+
+[build]
+rustflags = ["-C", "target-cpu=native"]
+
+[dependencies]
+rustfft = "6.1"
+ndarray = "0.17.2"
+v4l = "0.14"
+better_result = "0.3"

@@ -1,0 +1,152 @@
+use ndarray::Array2;
+use rustfft::{FftPlanner, num_complex::Complex};
+use std::sync::Arc;
+
+pub struct FourierFaceEngine {
+    width: usize,
+    height: usize,
+    fft_width: Arc<dyn rustfft::Fft<f32>>,
+    fft_height: Arc<dyn rustfft::Fft<f32>>,
+}
+
+impl FourierFaceEngine {
+    pub fn new(width: usize, height: usize) -> Self {
+        let mut planner = FftPlanner::new();
+
+        let fft_width = planner.plan_fft_forward(width);
+        let fft_height = planner.plan_fft_forward(height);
+
+        Self {
+            width,
+            height,
+            fft_width,
+            fft_height,
+        }
+    }
+
+    pub fn process_frame_to_coefficients(&self, gray_frame: &[u8]) -> Vec<f32> {
+        let img_matrix = Array2::from_shape_vec((self.height, self.width), gray_frame.to_vec())
+            .unwrap_or_else(|_| Array2::zeros((self.height, self.width)));
+
+        let mut shadow_matrix = Array2::<f32>::zeros((self.height, self.width));
+        for row in 1..(self.height - 1) {
+            for col in 1..(self.width - 1) {
+                let dx = img_matrix[[row, col + 1]] as f32 - img_matrix[[row, col - 1]] as f32;
+                let dy = img_matrix[[row, col + 1]] as f32 - img_matrix[[row, col - 1]] as f32;
+
+                shadow_matrix[[row, col]] = (dx * dx + dy * dy).sqrt();
+            }
+        }
+
+        let mut complex_matrix = shadow_matrix.mapv(|val| Complex::new(val, 0.0));
+
+        let row_scratch_len = self.fft_width.get_inplace_scratch_len().max(self.width);
+        let mut row_scratch = vec![Complex::new(0.0, 0.0); row_scratch_len];
+        let mut row_buffer = vec![Complex::new(0.0, 0.0); self.width];
+
+        for row in 0..self.height {
+            for col in 0..self.width {
+                row_buffer[col] = complex_matrix[[row, col]];
+            }
+
+            self.fft_width
+                .process_with_scratch(&mut row_buffer, &mut row_scratch);
+
+            for col in 0..self.width {
+                complex_matrix[[row, col]] = row_buffer[col];
+            }
+        }
+
+        let col_scratch_len = self.fft_height.get_inplace_scratch_len().max(self.height);
+        let mut col_scratch = vec![Complex::new(0.0, 0.0); col_scratch_len];
+        let mut col_buffer = vec![Complex::new(0.0, 0.0); self.height];
+
+        for col in 0..self.width {
+            for row in 0..self.height {
+                col_buffer[row] = complex_matrix[[row, col]];
+            }
+
+            self.fft_height
+                .process_with_scratch(&mut col_buffer, &mut col_scratch);
+
+            for row in 0..self.height {
+                complex_matrix[[row, col]] = col_buffer[row];
+            }
+        }
+
+        let sigma_small: f32 = 30.0 / self.width as f32;
+        let sigma_large: f32 = 2.0 / self.width as f32;
+        let s2_small_inv = -1.0 / (2.0 * sigma_small * sigma_small);
+        let s2_large_inv = -1.0 / (2.0 * sigma_large * sigma_large);
+
+        let w_f32 = self.width as f32;
+        let h_f32 = self.height as f32;
+
+        for row in 0..self.height {
+            let fy = if row < self.height / 2 {
+                row as f32
+            } else {
+                row as f32 - h_f32
+            } / h_f32;
+            let fy2 = fy * fy;
+
+            for col in 0..self.width {
+                let fx = if col < self.width / 2 {
+                    col as f32
+                } else {
+                    col as f32 - w_f32
+                } / w_f32;
+                let d2 = fx * fx + fy2;
+
+                let g_small = (d2 * s2_small_inv).exp();
+                let g_large = (d2 * s2_large_inv).exp();
+                let dog_weight = g_large - g_small;
+
+                complex_matrix[[row, col]] *= dog_weight;
+            }
+        }
+
+        let scan_radius = 64;
+        let mut fourier_signature = Vec::with_capacity(scan_radius * scan_radius);
+
+        for y in 0..scan_radius {
+            for x in 0..scan_radius {
+                let magnitude = complex_matrix[[y, x]].norm();
+                fourier_signature.push(magnitude);
+            }
+        }
+
+        fourier_signature
+    }
+
+    pub fn centroid_frame_generator(fourier_frames: Vec<Vec<f32>>) -> Vec<f32> {
+        if fourier_frames.is_empty() {
+            return Vec::new();
+        }
+
+        let num_frames = fourier_frames.len();
+        let num_pixels = fourier_frames[0].len();
+
+        let mut centroid = vec![0.0f32; num_pixels];
+        let median_idx = num_frames / 2;
+
+        let mut pixel_timeline = [0.0f32; 32];
+        let num_frames_safe = num_frames.min(32);
+
+        for pixel_idx in 0..num_pixels {
+            for t in 0..num_frames_safe {
+                unsafe {
+                    pixel_timeline[t] = *fourier_frames.get_unchecked(t).get_unchecked(pixel_idx);
+                }
+            }
+
+            let active_slice = &mut pixel_timeline[0..num_frames_safe];
+            active_slice
+                .sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+            centroid[pixel_idx] = active_slice[median_idx];
+        }
+
+        centroid
+    }
+}
