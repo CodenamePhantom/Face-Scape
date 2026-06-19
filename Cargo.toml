@@ -10,3 +10,5 @@ rustflags = ["-C", "target-cpu=native"]
 rustfft = "6.1"
 ndarray = "0.17.2"
 v4l = "0.14"
+atomic-matrix = { path = "../atomic-matrix" }
+bytemuck = "1.25"

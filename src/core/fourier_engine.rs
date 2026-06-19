@@ -11,6 +11,14 @@ pub struct FourierFaceEngine {
 }
 
 impl FourierFaceEngine {
+    /// Creates a new FourierFaceEngine instance and returns it to the user.
+    ///
+    /// ### Params:
+    /// @width: The width of the Fourier transformed matrix. \
+    /// @height: The height of the Fourier transformed matrix.
+    ///
+    /// ### Returns:
+    /// An instance of Self.
     pub fn new(width: usize, height: usize) -> Self {
         let mut planner = FftPlanner::new();
 
@@ -25,6 +33,23 @@ impl FourierFaceEngine {
         }
     }
 
+    /// Applies a frequency normalization filter on a frame to return a transformed vector of f32
+    /// weights.
+    ///
+    /// The frame first passes through a Sobel filter to extract the shadow map based on the color
+    /// gradient decay of neighbours. Then a 2D Fast Fourier Transformation is applied to both rows
+    /// and columns to separate the frequency identities on the shadow map, which is then run
+    /// through A Difference of Gaussians mask to filter out high and low frequency noise unusable
+    /// to the facial map. 
+    ///
+    /// The output frame is then extracted into a 48 x 48 radius fourier signature, and passed 
+    /// through an L2 Block Filter to even the weights between 0.0 and 1.0.
+    ///
+    /// ### Params:
+    /// @gray_frame: The frame in YUYV format as a stream of bytes.
+    ///
+    /// ### Returns:
+    /// The normalized fourier frame of the original frame.
     pub fn process_frame_to_coefficients(&self, gray_frame: &[u8]) -> Vec<f32> {
         let img_matrix = Array2::from_shape_vec((self.height, self.width), gray_frame.to_vec())
             .unwrap_or_else(|_| Array2::zeros((self.height, self.width)));
@@ -81,7 +106,7 @@ impl FourierFaceEngine {
         // frequency noise and exclude background information, dust, webcam artifacts, and a few other
         // small glitches.
         let sigma_small: f32 = 4.0 / self.width as f32;
-        let sigma_large: f32 = 75.0 / self.width as f32;
+        let sigma_large: f32 = 18.0 / self.width as f32;
         let s2_small_inv = -1.0 / (2.0 * sigma_small * sigma_small);
         let s2_large_inv = -1.0 / (2.0 * sigma_large * sigma_large);
 
@@ -128,6 +153,7 @@ impl FourierFaceEngine {
             }
         }
 
+        // L2 Block Filter pass.
         let norm: f32 = fourier_signature.iter().map(|x| x * x).sum::<f32>().sqrt();
         if norm > 1e-10 {
             fourier_signature.iter_mut().for_each(|x| *x /= norm);
@@ -136,8 +162,11 @@ impl FourierFaceEngine {
         fourier_signature
     }
 
-    // Aggregate a given number of frames using linear median to assemble a centroid frame of the
-    // fourier maps.
+    // Aggregate a given number of fourier_frames using the median of all frames to assemble a centroid 
+    // frame.
+    //
+    // ### Params:
+    // @fourier_frames: A package containing N normalized fourier_frames.
     pub fn centroid_frame_generator(fourier_frames: Vec<Vec<f32>>) -> Vec<f32> {
         if fourier_frames.is_empty() {
             return Vec::new();
