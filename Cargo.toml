@@ -10,4 +10,3 @@ rustflags = ["-C", "target-cpu=native"]
 rustfft = "6.1"
 ndarray = "0.17.2"
 v4l = "0.14"
-better_result = "0.3"

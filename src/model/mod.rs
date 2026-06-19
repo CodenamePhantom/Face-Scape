@@ -1,2 +1,3 @@
-pub mod persistent_model;
-pub mod icp_query;
+pub mod cartesian_model;
+pub mod euclidian_distance_query;
+pub mod mahalanobis_likeness;

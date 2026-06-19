@@ -1,3 +1,4 @@
+use crate::globals::consts::*;
 use ndarray::Array2;
 use rustfft::{FftPlanner, num_complex::Complex};
 use std::sync::Arc;
@@ -28,16 +29,18 @@ impl FourierFaceEngine {
         let img_matrix = Array2::from_shape_vec((self.height, self.width), gray_frame.to_vec())
             .unwrap_or_else(|_| Array2::zeros((self.height, self.width)));
 
+        // Creates a shadow map from YUYV frame using Sobel Filter.
         let mut shadow_matrix = Array2::<f32>::zeros((self.height, self.width));
         for row in 1..(self.height - 1) {
             for col in 1..(self.width - 1) {
                 let dx = img_matrix[[row, col + 1]] as f32 - img_matrix[[row, col - 1]] as f32;
-                let dy = img_matrix[[row, col + 1]] as f32 - img_matrix[[row, col - 1]] as f32;
+                let dy = img_matrix[[row + 1, col]] as f32 - img_matrix[[row - 1, col]] as f32;
 
                 shadow_matrix[[row, col]] = (dx * dx + dy * dy).sqrt();
             }
         }
 
+        // Applies a 2D FFT transformation to the shadow map. First the rows, then the columns
         let mut complex_matrix = shadow_matrix.mapv(|val| Complex::new(val, 0.0));
 
         let row_scratch_len = self.fft_width.get_inplace_scratch_len().max(self.width);
@@ -74,8 +77,11 @@ impl FourierFaceEngine {
             }
         }
 
-        let sigma_small: f32 = 30.0 / self.width as f32;
-        let sigma_large: f32 = 2.0 / self.width as f32;
+        // Applies a DoG (Difference of Gaussians) blur to the transformed matrix to normalize high
+        // frequency noise and exclude background information, dust, webcam artifacts, and a few other
+        // small glitches.
+        let sigma_small: f32 = 4.0 / self.width as f32;
+        let sigma_large: f32 = 75.0 / self.width as f32;
         let s2_small_inv = -1.0 / (2.0 * sigma_small * sigma_small);
         let s2_large_inv = -1.0 / (2.0 * sigma_large * sigma_large);
 
@@ -100,25 +106,38 @@ impl FourierFaceEngine {
 
                 let g_small = (d2 * s2_small_inv).exp();
                 let g_large = (d2 * s2_large_inv).exp();
-                let dog_weight = g_large - g_small;
+                let dog_weight = g_small - g_large;
 
                 complex_matrix[[row, col]] *= dog_weight;
             }
         }
 
-        let scan_radius = 64;
+        // Runs the fourier signature to extract a determined radius of information from the complex
+        // matrix into f32 format.
+        let scan_radius = FOURIER_RADIUS as usize;
         let mut fourier_signature = Vec::with_capacity(scan_radius * scan_radius);
 
         for y in 0..scan_radius {
             for x in 0..scan_radius {
-                let magnitude = complex_matrix[[y, x]].norm();
-                fourier_signature.push(magnitude);
+                if y < 4 && x < 4 {
+                    fourier_signature.push(0.0)
+                } else {
+                    let magnitude = complex_matrix[[y, x]].norm();
+                    fourier_signature.push(magnitude);
+                }
             }
+        }
+
+        let norm: f32 = fourier_signature.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if norm > 1e-10 {
+            fourier_signature.iter_mut().for_each(|x| *x /= norm);
         }
 
         fourier_signature
     }
 
+    // Aggregate a given number of frames using linear median to assemble a centroid frame of the
+    // fourier maps.
     pub fn centroid_frame_generator(fourier_frames: Vec<Vec<f32>>) -> Vec<f32> {
         if fourier_frames.is_empty() {
             return Vec::new();
@@ -128,10 +147,10 @@ impl FourierFaceEngine {
         let num_pixels = fourier_frames[0].len();
 
         let mut centroid = vec![0.0f32; num_pixels];
-        let median_idx = num_frames / 2;
 
         let mut pixel_timeline = [0.0f32; 32];
         let num_frames_safe = num_frames.min(32);
+        let median_idx = num_frames_safe / 2;
 
         for pixel_idx in 0..num_pixels {
             for t in 0..num_frames_safe {
