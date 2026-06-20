@@ -66,11 +66,13 @@ All resident models are loaded from the .fmodel file into an AtomicMatrix SHM ar
 
 ### Safety guarantees
 
-The algorithms used for model generation grants some safety invariants to the user:
+The algorithms used for model generation tries to grants some safety invariants to the user:
 
-- **Facial Spoffing**: The sobel filter for shadow map extraction guarantees that neither high fidelity pictures, nor 4K videos from the user can be match against resident models. As flat images generates a highly different shadow map from real objects, which will invariantly collapse to a extremelly different fourier matrix at the end of the pipeline, yielding low cosine similarities with any model.
+- **Facial Spoofing**: The sobel filter for shadow map extraction drastically reduces high fidelity pictures, and 4K videos attack surface against resident models. As flat images generates a different shadow map from real objects, which will collapse to a different fourier matrix at the end of the pipeline, yielding low cosine similarities with any model. Although, high complexity attacks like high fidelity silicon masks, video injection and adversarial aligment of frequency spectra are still applicable.
 - **Biometric Values Reverse Engineering**: Since the Fourier Matrix acts as a hashed value of your facial structure, no relevant biometric value can be extracted from the resident model. Making the utility of the pipeline one way only.
 - **Data Privacy**: FaceScape only register the processed fourier model of your face. No plane pictures are kept, nothing is stored in CNN weights, nothing is shipped out of your device unless you explicitly copy into another drive.
+
+As the early stage of the project, all these claims were tested on a single environment. Therefore, more tests on different deployments are required to prove that the safeties truly holds.
 
 ### Disclaimer
 
