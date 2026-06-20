@@ -40,7 +40,7 @@ FaceScape utilizes a traditional Visual Computation algorithm pipeline to genera
 
 ```text
 
-    [ captured frame ] --> [ Sobel Filter (extract shadow_matrix) ] --> [ 2D Fast Fourier Transformation (separate frequencies) ]
+    [ captured frame ] --> [ Sobel Filter (extract facial gradient map) ] --> [ 2D Fast Fourier Transformation (separate frequencies) ]
                                                                                                 |
                                                                                                 |
     [L2 Filter pass (Collapse values to fit between 0.0 and 1.0)] <-- [ Difference of Gaussians (band-pass filter)]
@@ -64,9 +64,9 @@ An interpolation using SLERP (Spherical Linear Interpolation) is then run betwee
 
 All resident models are loaded from the .fmodel file into an AtomicMatrix SHM arena for quick query. PAM can then call the authentication pipeline from the CLI and generate a partial model from fresh captured frames and run a cosine similarity between all the models in memory. The model with the highest yielding match is then evaluated in a *Best of N* paradigm.
 
-### Safety guarantees
+### Security Considerations
 
-The algorithms used for model generation tries to grants some safety invariants to the user:
+The algorithms used for model generation aim to provide the following security properties:
 
 - **Facial Spoofing**: The sobel filter for shadow map extraction drastically reduces high fidelity pictures, and 4K videos attack surface against resident models. As flat images generates a different shadow map from real objects, which will collapse to a different fourier matrix at the end of the pipeline, yielding low cosine similarities with any model. Although, high complexity attacks like high fidelity silicon masks, video injection and adversarial aligment of frequency spectra are still applicable.
 - **Biometric Values Reverse Engineering**: Since the Fourier Matrix acts as a hashed value of your facial structure, no relevant biometric value can be extracted from the resident model. Making the utility of the pipeline one way only.
