@@ -1,6 +1,11 @@
 # FaceScape
 ![FaceScape Banner](assets/banner.png)
-![Rust](https://img.shields.io/badge/Language%3A-Rust-orange?logo=rust) | ![Status](https://img.shields.io/badge/Status%3A-Work_In_Progress-blue) | ![Linux](https://img.shields.io/badge/Os%3A-Linux-gray?logo=linux)
+
+<p align="center">
+    <img src="https://img.shields.io/badge/Language%3A-Rust-orange?logo=rust" />
+    <img src="https://img.shields.io/badge/Status%3A-Work_In_Progress-blue" />
+    <img src="https://img.shields.io/badge/os%3A-Linux-gray?logo=linux"
+</p>
 
 ----------------------------------------------------
 
