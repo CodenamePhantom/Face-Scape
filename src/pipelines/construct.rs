@@ -1,18 +1,45 @@
 use crate::core::fourier_engine::FourierFaceEngine;
 use crate::core::webcam_controller::WebcamIngress;
 use atomic_matrix::prelude::{
-    HEADER_SPACE, HandlerFunctions, MatrixHandler, RelativePtr, STATE_ALLOCATED,
+    HEADER_SPACE, HandlerFunctions, MatrixHandler, RelativePtr
 };
 use std::{sync::atomic::Ordering, thread::ScopedJoinHandle};
 
 const STATE_PROCESSING: u32 = 50;
 
+/// Constructor holds the pipeline for assemblying facial models
+///
+/// Constructor invariantly requires access to an AtomicMatrix instance throug MatrixHandler for
+/// constructing fourier frames in parallel.
+///
+/// The pipeline is:
+///
+///    [capture frames (30 frames)]
+///                 |
+///     |-----------|-----------|-...
+///     |           |           |
+///  [FFT 1]     [FFT 2]     [FFT 3]
+///     |           |           |
+///     |-----------------------|
+///                 |
+///        [Median aggregation]
+///                 |
+///         [return centroid]
 pub struct Constructor<'a> {
     fourier_engine: &'a FourierFaceEngine,
     webcam: &'a WebcamIngress,
 }
 
 impl<'a> Constructor<'a> {
+    /// Runs the construction pipeline.
+    ///
+    /// ### Params:
+    /// @webcam: An instance of WebcamIngress to capture frames. \
+    /// @f_engine: A FourierFaceEngine instance to process the frames. \
+    /// @handler: MatrixHandler instance for parallel processing.
+    ///
+    /// ### Returns:
+    /// The constructed centroid.
     pub fn run(
         webcam: &'a WebcamIngress,
         f_engine: &'a FourierFaceEngine,
@@ -30,6 +57,14 @@ impl<'a> Constructor<'a> {
         centroid
     }
 
+    /// Captures N frames from WebcamIngress and dump them into the AtomicMatrix.
+    ///
+    /// ### Params:
+    /// @frames: The quantity of frames to be captured. \
+    /// @handler: A reference to the MatrixHandler.
+    ///
+    /// ### Returns:
+    /// A list of RelativePtr for the frames inside the arena.
     fn capture_frames(&self, frames: u8, handler: &MatrixHandler) -> Vec<RelativePtr<u8>> {
         let gs_frames = self.webcam.capture_gray_scale_frames(frames).unwrap();
 
@@ -50,6 +85,19 @@ impl<'a> Constructor<'a> {
         return f_frame_pack;
     }
 
+    /// Processes the captured frames inside AtomicMatrix into transformed fourier frames.
+    ///
+    /// It spawns worker threads with chunks of 6 pointers per thread and a reference to the
+    /// MatrixHandler. These workers then execute the job of generating the fourier frames from the
+    /// original frames inside the AtomicMatrix, and publish the processed version again in the
+    /// arena, all in parallel.
+    ///
+    /// ### Params:
+    /// @blocks: The list of RelativePtr to process.
+    /// @handler: A reference to MatrixHandler to be passed between threads.
+    ///
+    /// ### Returns:
+    /// A list of RelativePtr for the fourier frames inside the arena.
     fn generate_fourier_frames(
         &self,
         blocks: Vec<RelativePtr<u8>>,
@@ -124,6 +172,17 @@ impl<'a> Constructor<'a> {
         return f_blocks;
     }
 
+    /// Construct a median centroid frame from the fourier frames inside the matrix.
+    ///
+    /// Frames are queried sequentially from the arena and aggregated through the median of all
+    /// values.
+    ///
+    /// ### Params:
+    /// @blocks: The list of RelativePtr to process.
+    /// @handler: A reference to MatrixHandler.
+    ///
+    /// ### Returns:
+    /// The constructed centroid.
     fn construct_centroid(
         &self,
         blocks: Vec<RelativePtr<u8>>,
