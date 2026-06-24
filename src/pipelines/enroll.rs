@@ -13,8 +13,8 @@ impl Enroll {
         let mut enroll = Self {};
         let mut model_list = Vec::new();
 
-        let webcam = WebcamIngress::new("/dev/video0", Some((720, 1280))).unwrap();
-        let m_scale = memory_scale::custom::mb::<12>();
+        let webcam = WebcamIngress::new("/dev/video0", Some((1280, 720))).unwrap();
+        let m_scale = memory_scale::custom::mb::<50>();
 
         let (w, h) = webcam.resolution();
         let fourier_engine = FourierFaceEngine::new(w as usize, h as usize);
@@ -62,6 +62,8 @@ impl Enroll {
         model_list.push(mid_2_3b);
         model_list.push(model_three);
 
+        println!("{:?}", model_list);
+
         enroll.persist_model(model_list);
 
         println!("[FaceScape] Model persisted.");
@@ -81,18 +83,7 @@ impl Enroll {
     }
 
     fn slerp(&self, a: &[f32], b: &[f32], t: f32) -> Vec<f32> {
-        let dot = a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>().clamp(-1.0, 1.0);
-        let theta = dot.acos();
-
-        if theta.abs() < 1e-6 {
-            return a.to_vec();
-        }
-
-        let sin_theta = theta.sin();
-        let wa = ((1.0 - t) * theta).sin() / sin_theta;
-        let wb = (t * theta).sin() / sin_theta;
-
-        a.iter().zip(b).map(|(x, y)| wa * x + wb * y).collect()
+        a.iter().zip(b).map(|(x, y)| (1.0 - t) * x + t * y).collect()
     }
 
     fn persist_model(&mut self, model_list: Vec<Vec<f32>>) {
@@ -110,12 +101,7 @@ impl Enroll {
         writer.write_all(&(model_list[0].len() as u16).to_le_bytes()).unwrap();
 
 
-        for (i, model) in model_list.iter().enumerate() {
-            let label = format!("model_{}\n", i + 1);
-
-            writer.write_all("\n".as_bytes()).unwrap();
-            writer.write_all(&label.as_bytes()).unwrap();
-            
+        for (_, model) in model_list.iter().enumerate() {
             for f in model {
                 let bytes = f.to_le_bytes();
                 writer.write_all(&bytes).unwrap();

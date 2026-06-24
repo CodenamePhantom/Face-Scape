@@ -1,4 +1,4 @@
-use crate::core::fourier_engine::FourierFaceEngine;
+use crate::{core::fourier_engine::FourierFaceEngine, globals::consts::FOURIER_RADIUS};
 use crate::core::webcam_controller::WebcamIngress;
 use atomic_matrix::prelude::{
     HEADER_SPACE, HandlerFunctions, MatrixHandler, RelativePtr
@@ -204,7 +204,9 @@ impl<'a> Constructor<'a> {
                 let raw_bytes = std::slice::from_raw_parts(src, payload_bytes as usize);
 
                 let byte_slice: &[f32] = bytemuck::cast_slice(raw_bytes);
-                local_vec = byte_slice.to_vec();
+                let expected_len = (FOURIER_RADIUS * FOURIER_RADIUS) as usize;
+                let trimmed = &byte_slice[..expected_len.min(byte_slice.len())];
+                local_vec = trimmed.to_vec();
             }
             handler.free_at(block.offset() - HEADER_SPACE);
 

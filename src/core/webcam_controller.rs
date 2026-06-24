@@ -1,8 +1,11 @@
+use crate::globals::gamma_lut;
 use std::io;
 use v4l::buffer::Type;
 use v4l::io::traits::CaptureStream;
 use v4l::video::Capture;
 use v4l::{Device, FourCC};
+
+const FIRST_FRAMES_DROP: u8 = 5; // we drop the v4l gamma correction window.
 
 pub struct WebcamIngress {
     device: Device,
@@ -19,7 +22,7 @@ impl WebcamIngress {
         let device = Device::with_path(path)?;
         let (width, height) = match targets {
             Some(v) => v,
-            None => (1024, 1980) // Defaults to FullHD
+            None => (1920, 1024) // Defaults to FullHD
         };
 
         let mut format = device.format()?;
@@ -45,14 +48,45 @@ impl WebcamIngress {
         let mut stream = v4l::io::mmap::Stream::new(&self.device, Type::VideoCapture)?;
         let mut frame_pack = Vec::<Frames>::with_capacity(frame_capture as usize);
 
-        for _ in 0..frame_capture {
+        for i in 0..frame_capture + FIRST_FRAMES_DROP {
             let (buffer, _) = stream.next()?;
+
+            if i < FIRST_FRAMES_DROP {
+                continue
+            };
 
             let total_pixels = (self.width * self.height) as usize;
             let mut gray_buffer = Vec::with_capacity(total_pixels);
 
             for chunk in buffer.chunks_exact(2) {
                 gray_buffer.push(chunk[0]);
+            }
+
+            frame_pack.push(Frames { slice: gray_buffer });
+        }
+
+        Ok(frame_pack)
+    }
+
+    pub fn gamma_crushed_frames(&self, frame_capture: u8) -> io::Result<Vec<Frames>> {
+        let mut stream = v4l::io::mmap::Stream::new(&self.device, Type::VideoCapture)?;
+        let mut frame_pack = Vec::<Frames>::with_capacity(frame_capture as usize);
+
+        let gamma_lut = gamma_lut::generate_gamma_lut(0.40, 1.6, -20.0);
+
+        for i in 0..frame_capture + FIRST_FRAMES_DROP {
+            let (buffer, _) = stream.next()?;
+
+            if i < FIRST_FRAMES_DROP {
+                continue
+            };
+
+            let total_pixels = (self.width * self.height) as usize;
+            let mut gray_buffer = Vec::with_capacity(total_pixels);
+
+            for chunk in buffer.chunks_exact(2)  {
+                let crushed_y = gamma_lut[chunk[0] as usize] as u8;
+                gray_buffer.push(crushed_y);
             }
 
             frame_pack.push(Frames { slice: gray_buffer });
