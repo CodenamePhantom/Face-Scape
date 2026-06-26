@@ -9,7 +9,7 @@
 
 ----------------------------------------------------
 
-FaceScape is a hardware agnostic facial authentication engine that runs entirely on mathematical algorithms. No ML, no IR hardware, no bullshit.
+FaceScape is a hardware agnostic facial authentication engine that runs entirely on mathematical algorithms. No ML, no bullshit.
 
 ### Features
 
@@ -76,6 +76,21 @@ The algorithms used for model generation aim to provide the following security p
 - **Data Privacy**: FaceScape only register the processed fourier model of your face. No plain pictures are kept, nothing is stored in CNN weights, nothing is shipped out of your device unless you explicitly copy into another drive.
 
 As the early stage of the project, all these claims were tested on a single environment. Therefore, more tests on different deployments are required to prove that the safeties truly holds.
+
+### Third Party softwares & dependencies
+
+FaceScape relies on a few software dependencies to work propely:
+
+##### Regarding AtomicMatrix
+
+FaceScape uses AtomicMatrix as its async state management runtime. AtomicMatrix is another project developed the author that is not released yet, and any builds for this crate requires explicitly pointing to the crate cloned on the user's machine. You can find the project [here](https://github.com/CodenamePhantom/AtomicMatrix.git).
+
+##### Regarding OpenCV
+
+FaceScape utilizes a few components from **OpenCV (Open Source Computer Vision Libary)** ecosystem for image pre-processing.
+
+- **Facial Region Segmentation**: Localized facial crop is mapped utilizing standard geometric ratio heuristics based on OpenCV bounding box extractions.
+- **Haar Cascade Landmarking**: Initial coarse face detection relies on the default OpenCV XML cascades. The integrated XML data files contain their respective copyright disclaimers in accordance with OpenCV's open-source licensing terms. All subsequent signal processing algorithms (2D FFT, DoG Filtering, LERP multi-scale mapping and other mathematical implementations contained within `core` and `model` modules), are handled natively within FaceScape's Rust processing layers.
 
 ### Disclaimer
 
