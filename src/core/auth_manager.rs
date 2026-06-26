@@ -1,5 +1,6 @@
-use crate::globals::consts::{ MODEL_ARENA, INIT_FLAG, RESIDENT_MODEL };
+use crate::globals::consts::{INIT_FLAG, MODEL_ARENA, RESIDENT_MODEL};
 use crate::model::face_distance_model;
+use crate::pipelines::enroll::Enroll;
 use atomic_matrix::extensive_lib::looper::Looper;
 use atomic_matrix::prelude::{
     AtomicMatrix, HEADER_SPACE, HandlerFunctions, MatrixHandler, STATE_FREE, memory_scale,
@@ -11,13 +12,15 @@ pub struct AuthManager {
 }
 
 impl AuthManager {
-    pub fn start() {
+    pub fn start(user: String) {
         let pid = std::process::id();
-        let handler =
-            AtomicMatrix::bootstrap(Some(MODEL_ARENA.into()), memory_scale::custom::mb::<50>())
-                .unwrap();
+        let handler = AtomicMatrix::bootstrap(
+            Some(format!("{}.{}", MODEL_ARENA, user)),
+            memory_scale::custom::mb::<5>(),
+        )
+        .unwrap();
         let init_flag = handler.allocate_raw(36).unwrap(); // Alloc collapses to HEADER_SPACE in the
-                                                          // matrix by default
+        // matrix by default
 
         unsafe {
             init_flag
@@ -29,15 +32,14 @@ impl AuthManager {
             std::ptr::write(body_ptr, pid);
         }
 
-        let models = face_distance_model::parse("user");
+        let models = face_distance_model::parse(&user);
 
-        for (i, model) in models.iter().enumerate() {
+        for model in models {
             let payload: &[f32] = bytemuck::cast_slice(&model);
             let size = payload.len();
             let byte_len = std::mem::size_of_val(payload);
 
             let rel_ptr = handler.allocate_raw(byte_len as u32).unwrap();
-            println!("Allocated model {}", i);
 
             unsafe {
                 rel_ptr
@@ -59,10 +61,12 @@ impl AuthManager {
         }
     }
 
-    pub fn stop() {
-        let handler =
-            AtomicMatrix::bootstrap(Some(MODEL_ARENA.into()), memory_scale::custom::mb::<15>())
-                .unwrap();
+    pub fn stop(user: String) {
+        let handler = AtomicMatrix::bootstrap(
+            Some(format!("{}.{}", MODEL_ARENA, user)),
+            memory_scale::custom::mb::<15>(),
+        )
+        .unwrap();
         let looper = Looper::new(handler.share());
 
         let mut closed = false;
@@ -89,5 +93,38 @@ impl AuthManager {
         } else {
             println!("[FaceScape] Failed to close AuthManager! No initialization PID found");
         }
+    }
+
+    pub fn list() {
+        let f_iter = std::fs::read_dir("/etc/facescape/").unwrap();
+
+        println!(" Idx    | Name             | Modified");
+        for (i, fmodel) in f_iter.enumerate() {
+            let model = fmodel.unwrap();
+
+            println!("--------------------------");
+            println!(
+                "{:4}    | {:?}    | {:?}",
+                i,
+                model.file_name(),
+                model.metadata().unwrap().modified().unwrap()
+            );
+            println!("--------------------------");
+        }
+    }
+
+    pub fn delete(user: String) {
+        std::fs::remove_file(format!("/etc/facescape/{}.fmodel", user)).unwrap();
+        Self::stop(user);
+    }
+
+    pub fn update(user: String) {
+        Self::delete(user.clone());
+        Enroll::enroll(user);
+    }
+
+    pub fn reload(user: String) {
+        Self::stop(user.clone());
+        Self::start(user);
     }
 }

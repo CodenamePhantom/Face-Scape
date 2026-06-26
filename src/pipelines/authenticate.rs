@@ -1,18 +1,25 @@
-use atomic_matrix::prelude::{AtomicMatrix, HEADER_SPACE, HandlerFunctions, MatrixHandler, RelativePtr, memory_scale, uid_lite};
-use atomic_matrix::extensive_lib::looper::Looper;
-use std::sync::atomic::Ordering;
-use crate::globals::consts::{ MODEL_ARENA, RESIDENT_MODEL, INIT_FLAG, FOURIER_RADIUS };
-use crate::pipelines::construct::Constructor;
 use crate::core::fourier_engine::FourierFaceEngine;
 use crate::core::webcam_controller::WebcamIngress;
+use crate::globals::consts::{FOURIER_RADIUS, INIT_FLAG, MODEL_ARENA, RESIDENT_MODEL};
+use crate::pipelines::construct::Constructor;
+use atomic_matrix::extensive_lib::looper::Looper;
+use atomic_matrix::prelude::{
+    AtomicMatrix, HEADER_SPACE, HandlerFunctions, MatrixHandler, RelativePtr, memory_scale,
+    uid_lite,
+};
+use std::sync::atomic::Ordering;
 
 /// Authenticator holds the pipeline for scoring likeness between two models and match against a
 /// threshold.
 pub struct Authenticator {}
 
 impl Authenticator {
-    pub fn run(_user: String) {
-        let handler = AtomicMatrix::bootstrap(Some(MODEL_ARENA.into()), memory_scale::custom::mb::<50>()).unwrap();
+    pub fn run(user: String) {
+        let handler = AtomicMatrix::bootstrap(
+            Some(format!("{}.{}", MODEL_ARENA, user)),
+            memory_scale::custom::mb::<20>(),
+        )
+        .unwrap();
         let mut cs_list = Vec::<f32>::new();
 
         let int_models = Self::get_int_models(&handler);
@@ -23,7 +30,10 @@ impl Authenticator {
             let local_vec: Vec<f32>;
 
             unsafe {
-                let src = handler.base_ptr().add((model.offset() + HEADER_SPACE) as usize) as *const u8;
+                let src = handler
+                    .base_ptr()
+                    .add((model.offset() + HEADER_SPACE) as usize)
+                    as *const u8;
                 let total_size = model
                     .resolve_header(handler.base_ptr())
                     .size
@@ -35,24 +45,16 @@ impl Authenticator {
                 let expected_len = (FOURIER_RADIUS * FOURIER_RADIUS) as usize;
                 local_vec = raw_f32[..expected_len.min(raw_f32.len())].to_vec();
             }
-            for i in 0..48 {
-                println!(
-                    "{:4}: {:12.8} {:12.8}",
-                    i,
-                    part_model[i],
-                    local_vec[i]
-                )
-            }
 
-            cs_list.push(Self::cosine_similarity(local_vec, part_model.clone()));
+            cs_list.push(Self::biometric_distance(local_vec, part_model.clone()));
         }
 
         for cs in cs_list {
             println!("{:.20}", cs);
-            if cs > 0.95 {
+            if cs > 0.91 {
                 println!("[FaceScape Auth] Welcome!");
-                return
-            }     
+                return;
+            }
         }
 
         println!("[FaceScape Auth] Authentication failed")
@@ -62,7 +64,7 @@ impl Authenticator {
         let looper = Looper::new(model_arena.share());
         let mut init_flag = false;
         let mut ptr_list = Vec::<RelativePtr<u8>>::new();
-        
+
         for w in looper {
             let state = w.view_header().state.load(Ordering::Acquire);
 
@@ -78,7 +80,7 @@ impl Authenticator {
         if !init_flag {
             panic!("AuthManager is not initialized!");
         } else {
-            return ptr_list
+            return ptr_list;
         }
     }
 
@@ -88,11 +90,12 @@ impl Authenticator {
         let (w, h) = webcam.resolution();
         let fourier_engine = FourierFaceEngine::new(w as usize, h as usize);
         let temp_handler = AtomicMatrix::bootstrap(
-            Some(format!("face_scape.auth.{}", uid_lite::generate_uuid())), 
-            memory_scale::custom::mb::<50>()
-        ).unwrap();
+            Some(format!("face_scape.auth.{}", uid_lite::generate_uuid())),
+            memory_scale::custom::mb::<40>(),
+        )
+        .unwrap();
 
-        let part_model = Constructor::run(&webcam, &fourier_engine, &temp_handler);
+        let part_model = Constructor::run(&webcam, &fourier_engine, &temp_handler, 30);
         temp_handler.die();
         part_model
     }
@@ -104,30 +107,25 @@ impl Authenticator {
     /// by the magnitude multiplied from both models.
     ///
     /// The similarity score is then stored inside of the property self.likeness
-    fn cosine_similarity(int_model: Vec<f32>, part_model: Vec<f32>) -> f32 {
-        let dot_product: f32 = part_model.iter()
+    fn biometric_distance(int_model: Vec<f32>, part_model: Vec<f32>) -> f32 {
+        let dot_product: f32 = part_model
+            .iter()
             .zip(int_model.iter())
             .map(|(a, b)| a * b)
             .sum();
 
-        let magnitute_int: f32 = int_model.iter()
-            .copied()
-            .map(|x| x * x)
-            .sum();
+        let mag_int: f32 = int_model.iter().copied().map(|x| x * x).sum();
 
-        let magnitute_part: f32 = part_model.iter()
-            .copied()
-            .map(|x| x * x)
-            .sum();
+        let mag_part: f32 = part_model.iter().copied().map(|x| x * x).sum();
 
-        let mul_magnitude: f32 = magnitute_int * magnitute_part;
+        let mul_mag: f32 = mag_int * mag_part;
         let cosine_similarity: f32;
 
-        if mul_magnitude > 0.0 {
-            cosine_similarity = dot_product / mul_magnitude.sqrt();
+        if mul_mag > 0.0 {
+            cosine_similarity = dot_product / mul_mag.sqrt();
         } else {
             cosine_similarity = 0.0;
-        };
+        }
 
         cosine_similarity
     }

@@ -20,14 +20,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Enroll a new face model into FaceScape.
     Enroll {
         #[arg(long, default_value_t = whoami())]
         user: String,
     },
+
+    /// Authenticate against a FaceScape enrolled user.
     Auth {
         #[arg(long, default_value_t = whoami())]
         user: String,
     },
+
+    /// Manage FaceScape.
     Manage {
         #[command(subcommand)]
         action: Manage
@@ -36,14 +41,44 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum Manage {
+    /// Start FaceScape.
     Start {
         #[arg(long, default_value_t = whoami())]
         user: String,
     },
+
+    /// Stop FaceScape.
     Stop {
         #[arg(long, default_value_t = whoami())]
         user: String,
-    }
+    },
+
+    /// Reloads FaceScape
+    Reload {
+        #[arg(long, default_value_t = whoami())]
+        user: String,
+    },
+
+    /// List enrolled models.
+    List,
+
+    /// Delete a model.
+    Delete {
+        #[arg(long, default_value_t = whoami())]
+        user: String,
+    },
+
+    /// Updates a model.
+    Update {
+        #[arg(long, default_value_t = whoami())]
+        user: String,
+    },
+
+    /// Re-enrolls a user and restarts the model.
+    Rebase {
+        #[arg(long, default_value_t = whoami())]
+        user: String,
+    },
 }
 
 fn whoami() -> String {
@@ -59,7 +94,7 @@ fn main() {
 
     match cli.command {
         Commands::Enroll { user } => {
-            Enroll::enroll();
+            Enroll::enroll(user);
         }
         Commands::Auth { user } => {
             Authenticator::run(user);
@@ -67,10 +102,27 @@ fn main() {
         Commands::Manage { action } => {
             match action {
                 Manage::Start { user } => {
-                    AuthManager::start();
+                    AuthManager::start(user);
                 }
                 Manage::Stop { user } => {
-                    AuthManager::stop();
+                    AuthManager::stop(user);
+                }
+                Manage::Reload { user } => {
+                    AuthManager::reload(user);
+                }
+                Manage::List => {
+                    AuthManager::list();
+                }
+                Manage::Delete { user } => {
+                    AuthManager::delete(user);
+                }
+                Manage::Update { user } => {
+                    AuthManager::update(user);
+                }
+                Manage::Rebase { user } => {
+                    AuthManager::delete(user.clone());
+                    AuthManager::stop(user.clone());
+                    AuthManager::start(user);
                 }
             }
         }

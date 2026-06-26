@@ -1,5 +1,7 @@
+use crate::globals::consts::OPENCV_SCALE;
 use crate::{core::fourier_engine::FourierFaceEngine, globals::consts::FOURIER_RADIUS};
 use crate::core::webcam_controller::WebcamIngress;
+use crate::model::cascade_classifier::FacialDetector;
 use atomic_matrix::prelude::{
     HEADER_SPACE, HandlerFunctions, MatrixHandler, RelativePtr
 };
@@ -44,14 +46,15 @@ impl<'a> Constructor<'a> {
         webcam: &'a WebcamIngress,
         f_engine: &'a FourierFaceEngine,
         handler: &'a MatrixHandler,
+        size: u8,
     ) -> Vec<f32> {
         let constructor = Self {
             fourier_engine: f_engine,
             webcam,
         };
 
-        let blocks = constructor.capture_frames(30, handler);
-        let f_blocks = constructor.generate_fourier_frames(blocks, &handler);
+        let blocks = constructor.capture_frames(size, handler);
+        let f_blocks = constructor.generate_fourier_frames(blocks, &handler, webcam);
         let centroid = constructor.construct_centroid(f_blocks, &handler);
 
         centroid
@@ -102,15 +105,19 @@ impl<'a> Constructor<'a> {
         &self,
         blocks: Vec<RelativePtr<u8>>,
         handler: &MatrixHandler,
+        wc: &WebcamIngress,
     ) -> Vec<RelativePtr<u8>> {
         let mut f_blocks = Vec::with_capacity(blocks.len());
 
         fn job(
             handler_inner: &MatrixHandler,
             block_chunk: &[RelativePtr<u8>],
+            wc: &WebcamIngress,
             f_engine: &FourierFaceEngine,
         ) -> Vec<RelativePtr<u8>> {
+            let mut f_detector = FacialDetector::new("assets/haarcascade_frontalface_default.xml", OPENCV_SCALE as i32).unwrap();
             let mut p_block = Vec::new();
+
             for block in block_chunk {
                 unsafe {
                     block
@@ -136,7 +143,8 @@ impl<'a> Constructor<'a> {
                 }
                 handler_inner.free_at(block.offset() - HEADER_SPACE);
 
-                let fourier_frame = f_engine.process_frame_to_coefficients(&local_vec);
+                let face = wc.face_crop(&local_vec, &mut f_detector);
+                let fourier_frame = f_engine.process_frame_to_coefficients(&face.slice);
 
                 let payload: &[f32] = bytemuck::cast_slice(&fourier_frame);
                 let size = payload.len();
@@ -160,8 +168,8 @@ impl<'a> Constructor<'a> {
 
             let mut handles = Vec::<ScopedJoinHandle<Vec<RelativePtr<u8>>>>::new();
 
-            for block_scope in blocks.chunks(6) {
-                handles.push(s.spawn(move || job(handler_ref, block_scope, f_engine)));
+            for block_scope in blocks.chunks(3) {
+                handles.push(s.spawn(move || job(handler_ref, block_scope, wc, f_engine)));
             }
 
             for handle in handles {

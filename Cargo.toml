@@ -1,6 +1,6 @@
 [package]
 name = "face-scape"
-version = "0.1.0"
+version = "0.0.8"
 edition = "2024"
 
 [build]
@@ -10,6 +10,7 @@ rustflags = ["-C", "target-cpu=native"]
 rustfft = "6.1"
 ndarray = "0.17.2"
 v4l = "0.14"
+opencv = { version = "0.99", features = ["clang-runtime"] }
 atomic-matrix = { path = "../atomic-matrix" }
 bytemuck = "1.25"
 clap = { version = "4.6", features = ["derive"] }

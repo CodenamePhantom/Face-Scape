@@ -22,15 +22,16 @@ impl FourierFaceEngine {
     ///
     /// ### Returns:
     /// An instance of Self.
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(_width: usize, _height: usize) -> Self {
         let mut planner = FftPlanner::new();
+        let opencv_usize = OPENCV_SCALE as usize;
 
-        let fft_width = planner.plan_fft_forward(width);
-        let fft_height = planner.plan_fft_forward(height);
+        let fft_width = planner.plan_fft_forward(opencv_usize);
+        let fft_height = planner.plan_fft_forward(opencv_usize);
 
         Self {
-            width,
-            height,
+            width: opencv_usize,
+            height: opencv_usize,
             fft_width,
             fft_height,
         }
@@ -71,12 +72,7 @@ impl FourierFaceEngine {
 
         for y in 0..scan_radius {
             for x in 0..scan_radius {
-                if y < 4 && x < 4 {
-                    fourier_signature.push(0.0)
-                } else {
-                    let magnitude = complex_matrix[[y, x]].norm();
-                    fourier_signature.push(magnitude);
-                }
+                fourier_signature.push(complex_matrix[[y, x]].norm());
             }
         }
 
@@ -229,32 +225,46 @@ impl FourierFaceEngine {
         >,
     ) -> ndarray::ArrayBase<ndarray::OwnedRepr<Complex<f32>>, ndarray::Dim<[usize; 2]>, Complex<f32>>
     {
-        let sigma_small: f32 = 4.0 / self.width as f32;
-        let sigma_large: f32 = 18.0 / self.width as f32;
-        let s2_small_inv = -1.0 / (2.0 * sigma_small * sigma_small);
-        let s2_large_inv = -1.0 / (2.0 * sigma_large * sigma_large);
+        let pi_sq = std::f32::consts::PI * std::f32::consts::PI;
+
+        let sigma_small: f32 = 0.95;
+        let sigma_large: f32 = 3.40;
+        let s2_small_multiplier = -2.0 * pi_sq * sigma_small * sigma_small;
+        let s2_large_multiplier = -2.0 * pi_sq * sigma_large * sigma_large;
 
         let w_f32 = self.width as f32;
         let h_f32 = self.height as f32;
 
-        for row in 0..self.height {
-            let fy = if row < self.height / 2 {
-                row as f32
-            } else {
-                row as f32 - h_f32
-            } / h_f32;
-            let fy2 = fy * fy;
-
-            for col in 0..self.width {
-                let fx = if col < self.width / 2 {
+        let fxs: Vec<f32> = (0..self.width)
+            .map(|col| {
+                let res = if col < self.width / 2 {
                     col as f32
                 } else {
-                    col as f32 - w_f32
-                } / w_f32;
-                let d2 = fx * fx + fy2;
+                    (col as f32) - w_f32
+                };
+                res / w_f32
+            })
+            .collect();
 
-                let g_small = (d2 * s2_small_inv).exp();
-                let g_large = (d2 * s2_large_inv).exp();
+        let fys: Vec<f32> = (0..self.height)
+            .map(|row| {
+                let res = if row < self.height / 2 {
+                    row as f32
+                } else {
+                    (row as f32) - h_f32
+                };
+                res / h_f32
+            })
+            .collect();
+
+        for row in 0..self.height {
+            let fy2 = fys[row] * fys[row];
+            for col in 0..self.width {
+                let fx2 = fxs[col] * fxs[col];
+                let d2 = fx2 + fy2;
+
+                let g_small = (d2 * s2_small_multiplier).exp();
+                let g_large = (d2 * s2_large_multiplier).exp();
                 let dog_weight = g_small - g_large;
 
                 complex_matrix[[row, col]] *= dog_weight;

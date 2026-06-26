@@ -1,11 +1,16 @@
 use crate::globals::gamma_lut;
+use crate::model::cascade_classifier::FacialDetector;
 use std::io;
 use v4l::buffer::Type;
 use v4l::io::traits::CaptureStream;
 use v4l::video::Capture;
 use v4l::{Device, FourCC};
+use opencv::{
+    core::Mat,
+    prelude::*,
+};
 
-const FIRST_FRAMES_DROP: u8 = 5; // we drop the v4l gamma correction window.
+const FIRST_FRAMES_DROP: u8 = 7; // we drop the v4l gamma correction window.
 
 pub struct WebcamIngress {
     device: Device,
@@ -93,6 +98,32 @@ impl WebcamIngress {
         }
 
         Ok(frame_pack)
+    }
+
+    pub fn face_crop(&self, frame: &[u8], f_detector: &mut FacialDetector) -> Frames {
+        let borrowed_mat = Mat::new_rows_cols_with_data( 
+            self.height as i32, 
+            self.width as i32, 
+            frame,
+        ).unwrap();
+        let mat = borrowed_mat.try_clone().unwrap();
+
+        if let Some(face_mat) = f_detector.crop_and_normalize_face(&mat).unwrap() {
+            opencv::imgcodecs::imwrite("assets/face_debug.png", &face_mat, &opencv::core::Vector::new()).unwrap();
+
+            let continuous_face = if face_mat.is_continuous() {
+                face_mat
+            } else {
+                face_mat.clone()
+            };
+
+            let face_bytes_slice = continuous_face.data_bytes().unwrap();
+            let face_vector_owned = face_bytes_slice.to_vec();
+
+            return Frames { slice: face_vector_owned }
+        } else {
+            panic!("Unable to capture facial frames!")
+        }
     }
 
     pub fn resolution(&self) -> (u32, u32) {
