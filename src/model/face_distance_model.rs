@@ -1,6 +1,17 @@
 use crate::globals::consts::FMODEL_MAGIC;
 use std::fs;
 
+/// Reads the models persisted in the user's `.fmodel` file.
+///
+/// Metadata such as quantity of models and model size are read from the header section.
+/// Each subsequent object queried from the file is then converted from Little Endiann bytes into 
+/// floating point numbers.
+///
+/// ### Params:
+/// @username: The user model to read in the system.
+///
+/// ### Returns:
+/// A list containing all reconstructed models.
 pub fn parse(username: &str) -> Vec<Vec<f32>> {
     let mut models = Vec::new();
     let data = fs::read(format!("/etc/facescape/{}.fmodel", username)).expect(&format!(

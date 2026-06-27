@@ -6,9 +6,15 @@ use atomic_matrix::prelude::{ AtomicMatrix, MatrixHandler, uid_lite, memory_scal
 use std::io::{self, Write, BufWriter};
 use std::fs::File;
 
+/// Enroll takes care of the user enrollment pipeline with, generating the models, interpolating
+/// between the fixed anchors and persisting the model to disk.
 pub struct Enroll {}
 
 impl Enroll {
+    /// Runs the enrollment pipeline.
+    ///
+    /// ### Params:
+    /// @user: The user to enroll.
     pub fn enroll(user: String) {
         let mut enroll = Self {};
 
@@ -53,19 +59,33 @@ impl Enroll {
         println!("[FaceScape] Model persisted.");
     }
 
+    /// Spawns a new AtomicMatrix instance.
+    ///
+    /// ### Params:
+    /// @m: The size of the matrix.
     fn generate_matrix(&self, m: usize) -> MatrixHandler {
         AtomicMatrix::bootstrap(
             Some(format!("fs_capture.{}", uid_lite::generate_uuid())), 
             m,
         ).unwrap()
     }
-     
+    
+    /// Blocks the thread until a key press is received from stdin.
     fn wait_input(&self) {
         io::stdout().flush().unwrap();
         let mut _buffer = String::new();
         io::stdin().read_line(&mut _buffer).unwrap();
     }
 
+    /// Generates interpolated models between three spatial anchors using LERP.
+    ///
+    /// ### Params:
+    /// @v_far: A model anchor based far from the webcam. \
+    /// @v_avg: A model anchor based on an average distance from the webcam. \
+    /// @v_near: A model anchor based on a closer distance to the webcam.
+    ///
+    /// ### Returns:
+    /// A list containing the generated interpolated models.
     fn generate_interpolated_scale_space(
         v_far: &[f32],
         v_avg: &[f32],
@@ -87,6 +107,15 @@ impl Enroll {
         scale_space
     }
 
+    /// Applies a LERP interporlation between two anchors and normalizes the value before returning.
+    ///
+    /// ### Params:
+    /// @v1: The first anchor. \
+    /// @v2: The second anchor. \
+    /// @t: The distance to interpolated between v1 and v2.
+    ///
+    /// ### Returns:
+    /// The interpolated model.
     fn lerp_and_normalize(v1: &[f32], v2: &[f32], t: f32) -> Vec<f32> {
         let mut mixed = vec![0.0; v1.len()];
         let mut norm_sq = 0.0;
@@ -104,6 +133,17 @@ impl Enroll {
         mixed
     }
 
+    /// Writes a list of models into the .fmodel file for persistance.
+    ///
+    /// A metadata header is written at the beginning of the file, containing the file versioning,
+    /// number of models in the file, and the lenght of each model individually.
+    /// 
+    /// All floating point numbers are written to disk using Little Endiann bytes to ensure
+    /// consistency across threads and CPUs.
+    ///
+    /// ### Params:
+    /// @models: A list of models to write into disk. \
+    /// @user: The user which this model belongs to.
     fn persist_model(&mut self, models: Vec<Vec<f32>>, user: String) {
         match std::fs::exists("/etc/facescape") {
             Ok(_) => {},

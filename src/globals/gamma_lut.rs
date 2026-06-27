@@ -1,4 +1,4 @@
-pub fn generate_gamma_lut(gamma: f32, contrast: f32, brightness: f32) -> [u8; 256] {
+pub fn _generate_gamma_lut(gamma: f32, contrast: f32, brightness: f32) -> [u8; 256] {
     let mut lut = [0u8; 256];
     let inv_gamma = 1.0 / gamma;
 

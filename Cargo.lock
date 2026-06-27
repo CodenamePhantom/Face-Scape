@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "face-scape"
-version = "0.0.8"
+version = "0.0.9"
 dependencies = [
  "atomic-matrix",
  "bytemuck",
@@ -475,6 +475,23 @@ dependencies = [
  "regex",
  "semver",
  "shlex 2.0.1",
+]
+
+[[package]]
+name = "pam_facescape"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "pamsm",
+]
+
+[[package]]
+name = "pamsm"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aad7ddca63c73e80eb4ace88e130c9b513da6ec1284becd9fc1fc385a9a72a64"
+dependencies = [
+ "bitflags 1.3.2",
 ]
 
 [[package]]

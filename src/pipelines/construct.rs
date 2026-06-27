@@ -96,7 +96,7 @@ impl<'a> Constructor<'a> {
     /// arena, all in parallel.
     ///
     /// ### Params:
-    /// @blocks: The list of RelativePtr to process.
+    /// @blocks: The list of RelativePtr to process. \
     /// @handler: A reference to MatrixHandler to be passed between threads.
     ///
     /// ### Returns:
@@ -186,7 +186,7 @@ impl<'a> Constructor<'a> {
     /// values.
     ///
     /// ### Params:
-    /// @blocks: The list of RelativePtr to process.
+    /// @blocks: The list of RelativePtr to process. \
     /// @handler: A reference to MatrixHandler.
     ///
     /// ### Returns:

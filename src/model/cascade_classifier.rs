@@ -2,16 +2,25 @@ use opencv::{
     core::{ Mat, Rect, Size },
     objdetect::CascadeClassifier,
     prelude::*,
-    imgproc::{ resize, INTER_AREA }
+    imgproc::resize,
 };
 use std::path::Path;
 
+/// Uses OpenCV Cascade Classifying specifications to detect and crop faces on frames.
 pub struct FacialDetector {
     cascade: CascadeClassifier,
     target_size: i32,
 }
 
 impl FacialDetector {
+    /// Spaws a new FacialDetector instance from the haar cascade xml and a target crop size.
+    ///
+    /// ### Params:
+    /// @xml_path: The path to the Haar Cascade xml. \
+    /// @target_size: The size on which the crop will be sampled.
+    ///
+    /// ### Returns:
+    /// A result containing either an instance of self, or an error.
     pub fn new<P: AsRef<Path>>(xml_path: P, target_size: i32) -> Result<Self, opencv::Error> {
         let path_str = xml_path.as_ref().to_string_lossy();
         let cascade = CascadeClassifier::new(&path_str)?;
@@ -22,6 +31,14 @@ impl FacialDetector {
         })
     }
 
+    /// Runs the frame against the cascade heuristics to detect and crop the face.
+    ///
+    /// ### Params:
+    /// @frame: The frame to crop the face from, in Mat format.
+    ///
+    /// ### Returns:
+    /// A result containing either an optional Mat (None is returned if no faces are found.), or an
+    /// error.
     pub fn crop_and_normalize_face(&mut self, frame: &Mat) -> Result<Option<Mat>, opencv::Error> {
         let mut faces = opencv::core::Vector::<Rect>::new();
 

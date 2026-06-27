@@ -1,0 +1,12 @@
+[package]
+name = "pam_facescape"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "pam_facescape"
+crate-type = ["cdylib"]
+
+[dependencies]
+pamsm = { version = "0.5.5", features = ["libpam"]}
+bytemuck = { version = "1.25" }

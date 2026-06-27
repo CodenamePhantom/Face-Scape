@@ -7,11 +7,25 @@ use atomic_matrix::prelude::{
 };
 use std::sync::atomic::Ordering;
 
+/// Authentication Manager struct for loading structs into memory and keeping them mapped.
+///
+/// It uses an AtomicMatrix memory arena for safe and independent thread processing while keeping
+/// the mmap Linux object into scope through an infinite loop, to keep the system from wiping the
+/// memory segment.
+///
+/// It also holds a few other management functions, such as stopping the daemon, listing models,
+/// deleting models, and others.
 pub struct AuthManager {
     _handler: MatrixHandler,
 }
 
 impl AuthManager {
+    /// Runs the AuthManager daemon and loads the specified user models in memory.
+    ///
+    /// This also writes its own PID into the matrix to be then terminated by the stop function.
+    ///
+    /// ### Params:
+    /// @user: The user .fmodel file to get.
     pub fn start(user: String) {
         let pid = std::process::id();
         let handler = AtomicMatrix::bootstrap(
@@ -61,6 +75,12 @@ impl AuthManager {
         }
     }
 
+    /// Queries the auth daemon PID from AtomicMatrix to kill the process and wipe the arena.
+    ///
+    /// If the arena does not contain the INIT_FLAG block header, the function stops.
+    ///
+    /// ### Params:
+    /// @user: The user AuthManager daemon to be stopped.
     pub fn stop(user: String) {
         let handler = AtomicMatrix::bootstrap(
             Some(format!("{}.{}", MODEL_ARENA, user)),
@@ -95,6 +115,7 @@ impl AuthManager {
         }
     }
 
+    /// List all models present in the current system.
     pub fn list() {
         let f_iter = std::fs::read_dir("/etc/facescape/").unwrap();
 
@@ -113,16 +134,31 @@ impl AuthManager {
         }
     }
 
+    /// Deletes a model from the system.
+    ///
+    /// ### Params:
+    /// @user: The specified user model to be deleted.
     pub fn delete(user: String) {
         std::fs::remove_file(format!("/etc/facescape/{}.fmodel", user)).unwrap();
         Self::stop(user);
     }
 
+    /// Updates a user model in the system.
+    ///
+    /// It does this by first deleting the current model present, then calling enroll again.
+    ///
+    /// ### Params:
+    /// @user: The specified user model to be updated
     pub fn update(user: String) {
         Self::delete(user.clone());
-        Enroll::enroll(user);
+        Enroll::enroll(user.clone());
+        Self::reload(user);
     }
 
+    /// Reloads the AuthManager arena.
+    ///
+    /// ### Params:
+    /// @user: The specified user arena to be reloaded.
     pub fn reload(user: String) {
         Self::stop(user.clone());
         Self::start(user);

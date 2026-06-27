@@ -11,9 +11,18 @@ use std::sync::atomic::Ordering;
 
 /// Authenticator holds the pipeline for scoring likeness between two models and match against a
 /// threshold.
+///
+/// I achieves that by loading the user models written in memory, capturing a fresh partial model
+/// from the challenger caller, and running a cosine similarity between the part model and each
+/// internal model found in the arena. The best matching model slice is then used for
+/// authentication.
 pub struct Authenticator {}
 
 impl Authenticator {
+    /// Runs the authentication pipeline.
+    /// 
+    /// ### Params:
+    /// @user: The user to run auth against.
     pub fn run(user: String) {
         let handler = AtomicMatrix::bootstrap(
             Some(format!("{}.{}", MODEL_ARENA, user)),
@@ -24,7 +33,9 @@ impl Authenticator {
 
         let int_models = Self::get_int_models(&handler);
         let mut part_model = Self::get_part_model();
-        part_model.rotate_left(8);
+        part_model.rotate_left(8); // The internal model gets rotated somewhere on the loading. I
+                                   // found out that spinning either by 8 positions (left for part,
+                                   // right for int), works.
 
         for model in int_models {
             let local_vec: Vec<f32>;
@@ -60,6 +71,15 @@ impl Authenticator {
         println!("[FaceScape Auth] Authentication failed")
     }
 
+    /// Gets the specified user internal models from memory.
+    ///
+    /// This call will panic if the accessed matrix was not bootstrapped by an AuthManager.
+    ///
+    /// ### Params:
+    /// @model_arena: A reference to the models MatrixHandler
+    ///
+    /// ### Returns:
+    /// A list containing the pointers for each internal model
     fn get_int_models(model_arena: &MatrixHandler) -> Vec<RelativePtr<u8>> {
         let looper = Looper::new(model_arena.share());
         let mut init_flag = false;
@@ -84,6 +104,12 @@ impl Authenticator {
         }
     }
 
+    /// Generates a fresh facial model from the current challenger.
+    ///
+    /// The model is constructed from 30 captured frames.
+    ///
+    /// ### Returns:
+    /// A vector of gray-scale frames in YUYV format.
     fn get_part_model() -> Vec<f32> {
         let webcam = WebcamIngress::new("/dev/video0", Some((1280, 720))).unwrap();
 
@@ -106,7 +132,12 @@ impl Authenticator {
     /// magnitude of each model, gets the square root of both magnitudes and divides the dot product
     /// by the magnitude multiplied from both models.
     ///
-    /// The similarity score is then stored inside of the property self.likeness
+    /// ### Params:
+    /// @int_model: The internal model of the user. \
+    /// @part_model: The freshly collected model from the user.
+    ///
+    /// ### Returns:
+    /// An f32 likeness score between the two models.
     fn biometric_distance(int_model: Vec<f32>, part_model: Vec<f32>) -> f32 {
         let dot_product: f32 = part_model
             .iter()
